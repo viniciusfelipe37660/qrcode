@@ -1,0 +1,78 @@
+// Schema do projeto: gestão de eventos com check-in via QR Code
+// Rode `npx prisma migrate dev --name init` depois de configurar o .env
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  
+}
+
+// Organizador do evento (quem cria eventos e faz o check-in na entrada)
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  events Event[]
+
+  @@map("users")
+}
+
+model Event {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  location    String?
+  startsAt    DateTime
+  createdAt   DateTime @default(now())
+
+  organizerId String
+  organizer   User   @relation(fields: [organizerId], references: [id])
+
+  registrations Registration[]
+
+  @@index([organizerId])
+  @@map("events")
+}
+
+enum RegistrationStatus {
+  PENDING
+  CHECKED_IN
+}
+
+// Cada inscrito recebe um token único que vira o conteúdo do QR code.
+// O token é assinado (HMAC) no momento da inscrição — ver lib/qrToken.ts
+model Registration {
+  id        String              @id @default(cuid())
+  name      String
+  email     String
+  token     String              @unique // valor codificado no QR (assinado, não é só o id)
+  status    RegistrationStatus  @default(PENDING)
+  createdAt DateTime            @default(now())
+
+  eventId String
+  event   Event  @relation(fields: [eventId], references: [id])
+
+  checkIn CheckIn?
+
+  @@index([eventId])
+  @@map("registrations")
+}
+
+// Log do check-in em si. Separado de Registration pra manter histórico
+// e permitir auditoria (quem escaneou, quando, e detectar tentativa de reuso).
+model CheckIn {
+  id         String   @id @default(cuid())
+  checkedAt  DateTime @default(now())
+
+  registrationId String       @unique
+  registration   Registration @relation(fields: [registrationId], references: [id])
+
+  @@map("check_ins")
+}
