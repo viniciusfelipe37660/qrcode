@@ -1,69 +1,212 @@
-import Image from "next/image";
+"use client";
+
+import { FormEvent, useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { field, primary, formatDate } from "./ui";
+
+type User = { id: string; name: string; email: string };
+type EventItem = {
+  id: string;
+  name: string;
+  location: string | null;
+  startsAt: string;
+  _count: { registrations: number };
+};
 
 export default function Home() {
+  const [user, setUser] = useState<User | null | undefined>(undefined);
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => r.json())
+      .then((d) => setUser(d.user))
+      .catch(() => setUser(null));
+  }, []);
+
+  if (user === undefined) {
+    return <main className="p-8 text-slate-500">Carregando…</main>;
+  }
+  return user ? (
+    <Dashboard user={user} onLogout={() => setUser(null)} />
+  ) : (
+    <Landing onAuth={setUser} />
+  );
+}
+
+function Landing({ onAuth }: { onAuth: (u: User) => void }) {
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    const body = Object.fromEntries(new FormData(e.currentTarget));
+    const res = await fetch(`/api/auth/${mode}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).catch(() => null);
+    const data = await res?.json().catch(() => ({}));
+    setBusy(false);
+    if (!res || !res.ok) return setError(data?.error ?? "Falha de conexão com o servidor");
+    onAuth(data);
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <main className="mx-auto grid w-full max-w-5xl gap-12 px-6 py-16 md:grid-cols-[1.2fr_1fr] md:items-center">
+      <section>
+        <h1 className="text-4xl font-semibold leading-tight tracking-tight md:text-5xl">
+          Check-in de eventos com QR code que não dá para forjar.
+        </h1>
+        <p className="mt-5 max-w-prose text-lg text-slate-600">
+          Crie um evento, envie o link de inscrição e valide a entrada pela câmera do
+          celular. Cada QR code é assinado no servidor e só vale uma vez.
+        </p>
+        <ol className="mt-8 list-decimal space-y-2 pl-5 text-slate-700">
+          <li>O organizador cria o evento e compartilha o link de inscrição.</li>
+          <li>O convidado se inscreve e recebe o QR code na hora.</li>
+          <li>Na porta, o organizador escaneia o QR e confirma a entrada.</li>
+        </ol>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="mb-5 grid grid-cols-2 rounded-lg bg-slate-100 p-1 text-sm font-medium">
+          {(["login", "register"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => { setMode(m); setError(""); }}
+              className={`rounded-md py-2 ${mode === m ? "bg-white shadow-sm" : "text-slate-500"}`}
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+              {m === "login" ? "Entrar" : "Criar conta"}
+            </button>
+          ))}
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+        <form onSubmit={submit} className="space-y-3">
+          {mode === "register" && (
+            <input name="name" required placeholder="Nome" autoComplete="name" className={field} />
+          )}
+          <input name="email" type="email" required placeholder="Email" autoComplete="email" className={field} />
+          <input
+            name="password"
+            type="password"
+            required
+            minLength={mode === "register" ? 8 : undefined}
+            placeholder={mode === "register" ? "Senha (mínimo 8 caracteres)" : "Senha"}
+            autoComplete={mode === "register" ? "new-password" : "current-password"}
+            className={field}
+          />
+          {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+          <button disabled={busy} className={`${primary} w-full`}>
+            {busy ? "Aguarde…" : mode === "login" ? "Entrar" : "Criar conta"}
+          </button>
+        </form>
+      </section>
+    </main>
+  );
+}
+
+function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
+  const [events, setEvents] = useState<EventItem[] | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    const res = await fetch("/api/events");
+    if (res.status === 401) return onLogout();
+    setEvents(await res.json());
+  }, [onLogout]);
+
+  useEffect(() => {
+    load().catch(() => setError("Não foi possível carregar os eventos"));
+  }, [load]);
+
+  async function createEvent(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    setBusy(true);
+    setError("");
+    const data = Object.fromEntries(new FormData(form)) as Record<string, string>;
+    const res = await fetch("/api/events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      // datetime-local vem sem fuso; converter garante o horário certo no servidor
+      body: JSON.stringify({ ...data, startsAt: new Date(data.startsAt).toISOString() }),
+    }).catch(() => null);
+    setBusy(false);
+    if (!res || !res.ok) {
+      const body = await res?.json().catch(() => ({}));
+      return setError(body?.error ?? "Não foi possível criar o evento");
+    }
+    form.reset();
+    load();
+  }
+
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    onLogout();
+  }
+
+  return (
+    <main className="mx-auto w-full max-w-4xl px-6 py-10">
+      <header className="mb-8 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Seus eventos</h1>
+          <p className="text-sm text-slate-500">Logado como {user.name}</p>
         </div>
-      </main>
-    </div>
+        <button onClick={logout} className="text-sm font-medium text-slate-600 underline underline-offset-4">
+          Sair
+        </button>
+      </header>
+
+      <div className="grid gap-8 md:grid-cols-[1fr_1.4fr]">
+        <form onSubmit={createEvent} className="h-fit space-y-3 rounded-2xl border border-slate-200 bg-white p-5">
+          <h2 className="font-semibold">Novo evento</h2>
+          <input name="name" required placeholder="Nome do evento" className={field} />
+          <input name="startsAt" type="datetime-local" required className={field} />
+          <input name="location" placeholder="Local (opcional)" className={field} />
+          <textarea name="description" rows={3} placeholder="Descrição (opcional)" className={field} />
+          {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+          <button disabled={busy} className={`${primary} w-full`}>
+            {busy ? "Criando…" : "Criar evento"}
+          </button>
+        </form>
+
+        <section>
+          {events === null ? (
+            <p className="text-slate-500">Carregando…</p>
+          ) : events.length === 0 ? (
+            <p className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-slate-500">
+              Você ainda não tem eventos. Crie o primeiro no formulário ao lado.
+            </p>
+          ) : (
+            <ul className="space-y-3">
+              {events.map((ev) => (
+                <li key={ev.id}>
+                  <Link
+                    href={`/eventos/${ev.id}`}
+                    className="block rounded-2xl border border-slate-200 bg-white p-5 hover:border-indigo-600"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <h3 className="font-semibold">{ev.name}</h3>
+                      <span className="shrink-0 text-sm text-slate-500">
+                        {ev._count.registrations} inscritos
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm text-slate-600">
+                      {formatDate(ev.startsAt)}
+                      {ev.location ? `, ${ev.location}` : ""}
+                    </p>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+    </main>
   );
 }
