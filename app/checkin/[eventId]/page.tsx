@@ -11,11 +11,14 @@ type ScanResult =
 
 type Scanner = { stop: () => Promise<void> };
 
+const btn = { padding: "10px 16px", borderRadius: 8, fontWeight: 600 } as const;
+
 export default function CheckinScannerPage() {
   const params = useParams<{ eventId: string }>();
   const scannerRef = useRef<Scanner | null>(null);
   const isProcessingRef = useRef(false);
   const [running, setRunning] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const [cameraError, setCameraError] = useState("");
   const [result, setResult] = useState<ScanResult>({ status: "idle" });
 
@@ -26,10 +29,10 @@ export default function CheckinScannerPage() {
     };
   }, []);
 
+  // ---- Celular: câmera ao vivo ----
   async function startCamera() {
     setCameraError("");
     try {
-      // Import dinâmico: a lib usa a câmera, só roda no navegador
       const { Html5Qrcode } = await import("html5-qrcode");
       const scanner = new Html5Qrcode("qr-reader");
       scannerRef.current = scanner;
@@ -54,15 +57,18 @@ export default function CheckinScannerPage() {
     setRunning(false);
   }
 
-  // Alternativa: tirar uma foto do QR (abre a câmera nativa do celular)
-  async function scanPhoto(file: File) {
+  // ---- Computador (ou foto no celular): ler o QR de uma imagem ----
+  async function scanImage(file: File) {
     const { Html5Qrcode } = await import("html5-qrcode");
     const reader = new Html5Qrcode("qr-file-reader");
     try {
       const text = await reader.scanFile(file, false);
       await handleScan(text);
     } catch {
-      setResult({ status: "error", message: "Não encontrei um QR code na foto. Tente de mais perto." });
+      setResult({
+        status: "error",
+        message: "Não encontrei um QR code na imagem. Tente outra.",
+      });
     } finally {
       reader.clear();
     }
@@ -110,32 +116,87 @@ export default function CheckinScannerPage() {
 
   return (
     <main style={{ maxWidth: 480, margin: "0 auto", padding: 16 }}>
-      <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 12 }}>
+      <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 16 }}>
         Check-in — Evento {params.eventId}
       </h1>
 
+      {/* Resultado no topo, para aparecer também no celular sem rolar */}
+      <div
+        style={{
+          padding: 16,
+          borderRadius: 8,
+          textAlign: "center",
+          fontWeight: 600,
+          backgroundColor: boxColor,
+        }}
+      >
+        {result.status === "idle" && "Envie a imagem do QR code ou ligue a câmera"}
+        {result.status === "success" &&
+          `✅ ${result.name} — check-in confirmado em ${result.eventName}`}
+        {result.status === "duplicate" &&
+          `⚠️ ${result.name} já fez check-in às ${new Date(result.checkedAt).toLocaleTimeString("pt-BR")}`}
+        {result.status === "error" && `❌ ${result.message}`}
+      </div>
+
+      {/* Computador: enviar imagem */}
+      <h2 style={{ fontSize: 16, fontWeight: 700, margin: "24px 0 8px" }}>
+        No computador: enviar imagem do QR code
+      </h2>
+      <label
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragging(false);
+          const file = e.dataTransfer.files?.[0];
+          if (file) scanImage(file);
+        }}
+        style={{
+          display: "block",
+          padding: 24,
+          borderRadius: 8,
+          textAlign: "center",
+          cursor: "pointer",
+          border: `2px dashed ${dragging ? "#4f46e5" : "#9ca3af"}`,
+          background: dragging ? "#eef2ff" : "#fff",
+        }}
+      >
+        Clique para escolher a imagem
+        <br />
+        <span style={{ fontSize: 14, color: "#6b7280" }}>ou arraste o arquivo para cá</span>
+        <input
+          type="file"
+          accept="image/*"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) scanImage(file);
+            e.target.value = "";
+          }}
+        />
+      </label>
+
+      {/* Celular: câmera */}
+      <h2 style={{ fontSize: 16, fontWeight: 700, margin: "24px 0 8px" }}>
+        No celular: câmera
+      </h2>
       <div id="qr-reader" style={{ width: "100%" }} />
       <div id="qr-file-reader" style={{ display: "none" }} />
 
-      <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {!running ? (
-          <button
-            onClick={startCamera}
-            style={{ padding: "10px 16px", borderRadius: 8, background: "#4f46e5", color: "#fff", fontWeight: 600 }}
-          >
+          <button onClick={startCamera} style={{ ...btn, background: "#4f46e5", color: "#fff" }}>
             Ligar câmera
           </button>
         ) : (
-          <button
-            onClick={stopCamera}
-            style={{ padding: "10px 16px", borderRadius: 8, background: "#e5e7eb", fontWeight: 600 }}
-          >
+          <button onClick={stopCamera} style={{ ...btn, background: "#e5e7eb" }}>
             Desligar câmera
           </button>
         )}
-        <label
-          style={{ padding: "10px 16px", borderRadius: 8, background: "#e5e7eb", fontWeight: 600, cursor: "pointer" }}
-        >
+        <label style={{ ...btn, background: "#e5e7eb", cursor: "pointer" }}>
           Tirar foto do QR
           <input
             type="file"
@@ -144,7 +205,7 @@ export default function CheckinScannerPage() {
             style={{ display: "none" }}
             onChange={(e) => {
               const file = e.target.files?.[0];
-              if (file) scanPhoto(file);
+              if (file) scanImage(file);
               e.target.value = "";
             }}
           />
@@ -156,24 +217,6 @@ export default function CheckinScannerPage() {
           Não foi possível abrir a câmera: {cameraError}
         </p>
       )}
-
-      <div
-        style={{
-          marginTop: 16,
-          padding: 16,
-          borderRadius: 8,
-          textAlign: "center",
-          fontWeight: 600,
-          backgroundColor: boxColor,
-        }}
-      >
-        {result.status === "idle" && "Ligue a câmera e aponte para o QR code"}
-        {result.status === "success" &&
-          `✅ ${result.name} — check-in confirmado em ${result.eventName}`}
-        {result.status === "duplicate" &&
-          `⚠️ ${result.name} já fez check-in às ${new Date(result.checkedAt).toLocaleTimeString("pt-BR")}`}
-        {result.status === "error" && `❌ ${result.message}`}
-      </div>
     </main>
   );
 }
